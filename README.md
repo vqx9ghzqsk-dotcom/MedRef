@@ -1,3 +1,5 @@
+[Uploading medecine-pratique-revision (4).html…]()
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -76,6 +78,9 @@ nav.topnav a.active{background:var(--primary);color:#fff}
 .sp-item .t{font-weight:700;color:var(--text)}
 .sp-item .b{font-size:.78rem;color:var(--muted)}
 .sp-item .sn{font-size:.83rem;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.sp-item .mline{margin-top:5px;display:flex;gap:8px;align-items:flex-start;font-size:.83rem;color:var(--muted)}
+.sp-item .mlab{flex:none;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--primary-soft);color:var(--primary);font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:999px}
+.sp-item .mtxt{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sp-item mark{background:transparent;color:var(--primary);font-weight:800}
 .sp-empty{padding:22px;text-align:center;color:var(--muted);font-size:.92rem}
 
@@ -376,7 +381,7 @@ html[data-theme="dark"] .med-grp h4{color:color-mix(in srgb,var(--dc,#0e6ba8) 55
     </a>
     <div class="searchwrap">
       <span class="sicon">🔍</span>
-      <input id="search" type="search" placeholder="Rechercher une pathologie…" autocomplete="off" aria-label="Rechercher une pathologie">
+      <input id="search" type="search" placeholder="Rechercher : symptôme, diagnostic, examen, traitement…" autocomplete="off" aria-label="Rechercher une pathologie, un symptôme, un diagnostic ou un traitement">
     </div>
     <nav class="topnav" id="topnav">
       <a href="#/" data-route="home">Accueil</a>
@@ -393,7 +398,7 @@ html[data-theme="dark"] .med-grp h4{color:color-mix(in srgb,var(--dc,#0e6ba8) 55
   <div class="sp-inner">
     <div class="sp-head">
       <span>🔍</span>
-      <input id="sp-input" type="text" placeholder="Nom de la pathologie, signe, traitement…" autocomplete="off">
+      <input id="sp-input" type="text" placeholder="Symptôme, signe clinique, diagnostic différentiel, examen, médicament, posologie, traitement…" autocomplete="off">
       <button class="btn sm ghost" id="sp-close">Fermer</button>
     </div>
     <div id="sp-results"></div>
@@ -24073,16 +24078,62 @@ applyTheme(t)})();
 $("#themeBtn").addEventListener("click",function(){applyTheme(document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark")});
 
 /* ================= Recherche ================= */
+/* Index étendu : chaque fiche est découpée en lignes cherchables, munies du
+   libellé de leur section. Couvre : symptômes (signes cliniques + sémiologie
+   signe/valeur), démarche sémiologique & diagnostique (examens, résultats
+   attendus), diagnostics différentiels, et traitements selon le même principe
+   que les sections thérapeutiques du site — stratégie, médicaments &
+   posologies, prise en charge non médicamenteuse, conduite à tenir,
+   formes cliniques (avec leur traitement), complications, épidémiologie. */
+var SIDX=null;
+function buildSearchIndex(){
+  var out=[];
+  ALL.forEach(function(nd){
+    var p=nd.p,ls=[];
+    function add(lab,sc,raw){if(raw)ls.push({lab:lab,sc:sc,raw:String(raw)})}
+    add("Pathologie",0,p.n);
+    add("Pathologie",1,p.q);
+    add("Symptôme — signes cliniques",2,p.s);
+    (p.sg||[]).forEach(function(g){add("Signe sémiologique",2,g.n+" — "+g.d)});
+    (p.ddx||[]).forEach(function(x){add("Diagnostic différentiel",3,x)});
+    add("Démarche diagnostique — examens",3,p.dx);
+    (p.ex||[]).forEach(function(x){add("Examen — résultats",4,x.e+" — "+x.p)});
+    add("Traitement — stratégie",3,p.t);
+    (p.med||[]).forEach(function(grp){(grp.l||[]).forEach(function(d){
+      add("Traitement médicamenteux — posologies",3,grp.i+" : "+d.m+" — "+d.p+(d.dur?" — "+d.dur:""))})});
+    add("Traitement non médicamenteux",4,p.nm);
+    (p.cat||[]).forEach(function(st){add("Conduite à tenir — pas à pas",4,st)});
+    (p.fc||[]).forEach(function(f){add("Forme clinique & son traitement",4,f.n+" — "+f.d+(f.tr?" — 💊 "+f.tr:""))});
+    add("Complication",4,p.cp);
+    add("Épidémiologie & terrain",4,p.ep);
+    add("Point clé",4,p.k);
+    add("Définition",4,p.d);
+    ls.forEach(function(l){
+      l.lines=String(l.raw).split(/\n+/).map(function(x){return x.trim()}).filter(Boolean);
+      l.n=norm(l.lines.join("\n"));
+    });
+    out.push({nd:nd,ls:ls.filter(function(l){return l.lines.length})});
+  });
+  return out;
+}
 function doSearch(term){
   var t=norm(term.trim());
   if(t.length<2)return[];
+  if(!SIDX)SIDX=buildSearchIndex();
   var res=[];
-  ALL.forEach(function(n){
-    var nn=norm(n.p.n);var sc=-1;
-    if(nn.indexOf(t)>=0)sc=nn.indexOf(t)===0?0:1;
-    else if(norm(n.p.k).indexOf(t)>=0||norm(n.p.t).indexOf(t)>=0||norm(n.p.dx).indexOf(t)>=0)sc=2;
-    else if(norm(n.p.s).indexOf(t)>=0||norm(n.p.d).indexOf(t)>=0)sc=3;
-    if(sc>=0)res.push({n:n,sc:sc});
+  SIDX.forEach(function(it){
+    var best=null;
+    it.ls.forEach(function(l){
+      if(l.n.indexOf(t)<0)return;
+      var sc=l.sc;
+      if(l.lab==="Pathologie")sc=(norm(it.nd.p.n).indexOf(t)===0)?0:1;
+      /* paragraphe contenant la correspondance, pour l'aperçu du résultat */
+      var line=null;
+      for(var i=0;i<l.lines.length;i++){if(norm(l.lines[i]).indexOf(t)>=0){line=l.lines[i];break}}
+      if(!line)line=l.lines[0];
+      if(!best||sc<best.sc||(sc===best.sc&&line.length<best.line.length))best={sc:sc,lab:l.lab,line:line};
+    });
+    if(best)res.push({n:it.nd,sc:best.sc,lab:best.lab,line:best.line});
   });
   res.sort(function(a,b){return a.sc-b.sc||a.n.p.n.localeCompare(b.n.p.n,"fr")});
   return res.slice(0,25);
@@ -24097,14 +24148,17 @@ function closeSearch(){$("#searchpanel").classList.remove("open");$("#search").v
 function renderSearch(term){
   var box=$("#sp-results");
   var items=doSearch(term);
-  if(!term||term.trim().length<2){box.innerHTML='<div class="sp-empty">Saisissez au moins 2 caractères…</div>';return}
+  if(!term||term.trim().length<2){box.innerHTML='<div class="sp-empty">Saisissez au moins 2 caractères.<br><span style="font-size:.8rem;opacity:.85">Recherche par : nom de pathologie · symptôme &amp; signe clinique · signe sémiologique · diagnostic différentiel · examen &amp; démarche diagnostique · médicament &amp; posologie · traitement…</span></div>';return}
   if(!items.length){box.innerHTML='<div class="sp-empty">Aucun résultat pour « '+esc(term)+' »</div>';return}
   box.innerHTML=items.map(function(r){
-    var n=r.n;
+    var n=r.n,isName=r.lab==="Pathologie";
     return '<a class="sp-item" href="#/p/'+n.id+'" data-close="1">'+
       '<div class="t">'+hi(n.p.n,term)+'</div>'+
       '<div class="b">'+esc(n.dept.name)+' › '+esc(n.spec.name)+'</div>'+
-      '<div class="sn">'+hi(trunc(n.p.d,140),term)+'</div></a>';
+      (isName
+        ?'<div class="sn">'+hi(trunc(n.p.d,140),term)+'</div>'
+        :'<div class="mline"><span class="mlab">'+esc(r.lab)+'</span><span class="mtxt">'+hi(trunc(r.line,170),term)+'</span></div>')+
+      '</a>';
   }).join("");
 }
 $("#search").addEventListener("focus",function(){openSearch();$("#sp-input").value=this.value;renderSearch(this.value)});
