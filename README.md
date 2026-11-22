@@ -1,4 +1,3 @@
-[Uploading medecine-pratique-revision (4).html…]()
 <!DOCTYPE html>
 <html lang="fr">
 <head>
