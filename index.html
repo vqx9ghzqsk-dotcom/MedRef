@@ -668,11 +668,35 @@ body.adm-on{padding-bottom:56px}
 .adm-fbdot.st-pending,.adm-fbdot.st-queue,.adm-fbdot.st-empty{background:color-mix(in srgb,var(--warn,#e6a23c) 15%,transparent)}
 .adm-fbdot.st-pending::before,.adm-fbdot.st-queue::before,.adm-fbdot.st-empty::before{background:var(--warn,#e6a23c)}
 .adm-fbdot.st-local,.adm-fbdot.st-init{background:var(--card2,#eef2f7);color:var(--muted,#64748b)}
-.adm-fbdot.st-error{background:color-mix(in srgb,var(--danger,#e5484d) 12%,transparent);color:var(--danger,#e5484d)}
-.adm-fbdot.st-error::before{background:var(--danger,#e5484d)}
+.adm-fbdot.st-error,.adm-fbdot.st-locked{background:color-mix(in srgb,var(--danger,#e5484d) 12%,transparent);color:var(--danger,#e5484d)}
+.adm-fbdot.st-error::before,.adm-fbdot.st-locked::before{background:var(--danger,#e5484d)}
 #admFbBlock code{font-size:.68rem;background:var(--card2,#eef2f7);padding:1px 5px;border-radius:5px;word-break:break-all}
 #admUser{width:100%;box-sizing:border-box;font:inherit;font-size:.82rem;padding:7px 10px;
   border:1px solid var(--border,#e2e8f0);border-radius:9px;background:var(--card,#fff);color:var(--text,#0f172a)}
+
+/* Firebase : pastille cloud visible de tous (bas gauche) + dialogue de connexion */
+#fbChip{position:fixed;left:14px;bottom:14px;z-index:900;display:inline-flex;align-items:center;
+  font:700 .72rem/1 system-ui,sans-serif;padding:9px 13px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border,#e2e8f0);background:var(--card,#fff);color:var(--muted,#64748b);
+  box-shadow:0 4px 14px rgba(15,23,42,.14);transition:all .15s}
+#fbChip:hover{transform:translateY(-1px)}
+#fbChip.st-sync{color:var(--ok,#3fb962);border-color:color-mix(in srgb,var(--ok,#3fb962) 45%,transparent)}
+#fbChip.st-locked,#fbChip.st-error{color:var(--danger,#e5484d);border-color:color-mix(in srgb,var(--danger,#e5484d) 45%,transparent)}
+#fbChip.st-queue,#fbChip.st-pending,#fbChip.st-empty{color:var(--warn,#e6a23c)}
+#fbDlg{position:fixed;inset:0;z-index:1600;display:flex;align-items:center;justify-content:center}
+.fb-back{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.fb-card{position:relative;background:var(--card,#fff);color:var(--text,#0f172a);width:min(440px,92vw);
+  max-height:88vh;overflow:auto;border-radius:16px;padding:18px;box-shadow:0 18px 60px rgba(15,23,42,.3);
+  animation:admUp .16s ease}
+.fb-card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-weight:800;font-size:.92rem;margin-bottom:6px}
+.fb-x{background:none;border:none;cursor:pointer;font-size:1rem;color:var(--muted,#64748b);padding:2px 6px}
+.fb-form{display:grid;gap:8px;margin:10px 0}
+.fb-form input{font:inherit;font-size:.85rem;padding:8px 10px;border:1px solid var(--border,#e2e8f0);
+  border-radius:9px;background:var(--card,#fff);color:var(--text,#0f172a);width:100%;box-sizing:border-box}
+.fb-err{font-size:.72rem;font-weight:700;color:var(--danger,#e5484d);min-height:16px}
+.fb-box .adm-set-btns{margin-top:8px}
+.fb-box .adm-hint code{font-size:.68rem;background:var(--card2,#eef2f7);padding:1px 5px;border-radius:5px;word-break:break-all}
 
 /* Mobile */
 @media (max-width:640px){
@@ -26784,19 +26808,22 @@ decorateView();
 </script>
 <script id="firebase-all">
 /* ═══════════════════════════════════════════════════════════════════
-   FIREBASE — Realtime Database : synchronisation temps réel du site
-   (medecine-pratique v5)
-   · État partagé dans la base temps réel : <databaseURL>/site/v1
+   FIREBASE — Realtime Database + Authentication (medecine-pratique v5)
+   · État partagé : <databaseURL>/site/v1
      { meta:{updatedAt,updatedBy,rev}, patches:[…], valid:{…}, log:[…] }
-   · Chaque modification (persistance locale) est republiée automatiquement
-     et arrive EN TEMPS RÉEL sur tous les appareils connectés.
-   · Hors-ligne : tout continue de fonctionner (données embarquées +
-     cache localStorage) ; au retour de la connexion, l'état local le plus
-     récent est publié (dernier auteur = vainqueur).
-   · Remplace la base par l'état distant si elle est plus récente que le
-     local — sauf si un éditeur est ouvert : l'adoption est alors différée.
-   Console → Realtime Database → Règles (minimum pour que ça marche) :
-     { "rules": { "site": { ".read": true, ".write": true } } }
+   · Règles conseillées : { "rules": { ".read": "auth != null", ".write": "auth != null" } }
+     → le site demande alors une connexion Firebase (Email/Password) :
+     compte créé dans la console (Authentication → Users). La session
+     survit au rafraîchissement (browserLocalPersistence).
+   · Temps réel : chaque modification est republiée et arrive en direct
+     sur tous les appareils connectés.
+   · Hors-ligne / verrouillé : tout continue de fonctionner en local
+     (données embarquées + cache localStorage) ; au retour de la
+     connexion, l'état local le plus récent est publié.
+   · Accès refusé (permission_denied) → état « locked » + formulaire
+     de connexion (pastille ☁️ en bas à gauche, visible de tous, et
+     bloc Réglages). La connexion cloud est indépendante du mot de
+     passe admin : lecture/synchro d'un côté, édition de l'autre.
    ═══════════════════════════════════════════════════════════════════ */
 (function(){
 "use strict";
@@ -26816,79 +26843,168 @@ var CFG={
 var SDK="https://www.gstatic.com/firebasejs/10.12.2/";
 var PATH="site/v1";
 
-var HUB={state:"init",lastSync:"—",remote:null,pending:null,pubT:null,adapters:"—"};
+var HUB={state:"init",lastSync:"—",remote:null,pending:null,pubT:null,adapters:"—",lockToast:false};
 window.__FBHUB=HUB;                                    /* lu par le module admin (hook dirty) */
 
-var FB={ready:false,connected:false,adapter:null};
+var FB={ready:false,connected:false,adapter:null,auth:null,authMod:null,user:null,
+        unsub:{conn:null,state:null}};
 
 /* ───────────────── helpers ───────────────── */
+function qs(s,r){return (r||document).querySelector(s);}
 function nowStr(){var d=new Date();return d.toLocaleDateString("fr-FR")+" "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});}
 function stateOf(){return {meta:A.STORE.meta||{updatedAt:0,updatedBy:"",rev:0},
   patches:A.STORE.patches,valid:A.STORE.valid,log:A.STORE.log};}
 function sameState(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function cacheLocal(){try{localStorage.setItem(A.LSK,JSON.stringify(A.STORE));}catch(e){}}
-function logRemote(act,txt){                           /* journal local (persist → republication) */
-  A.STORE.log.unshift({ts:nowStr(),by:A.ADM.on?A.ADM.user:"système",act:act,tgt:"cloud",txt:txt});
-  if(A.STORE.log.length>400)A.STORE.log.length=400;
-  try{localStorage.setItem(A.LSK,JSON.stringify(A.STORE));}catch(e){}
+function authErr(e){
+  var c=String((e&&(e.code||(e.error&&e.error.code)))||"");
+  if(c.indexOf("invalid-credential")>=0||c.indexOf("wrong-password")>=0||c.indexOf("user-not-found")>=0)return "identifiants incorrects";
+  if(c.indexOf("invalid-email")>=0)return "adresse email invalide";
+  if(c.indexOf("too-many-requests")>=0)return "trop de tentatives — réessaie plus tard";
+  if(c.indexOf("operation-not-allowed")>=0||c.indexOf("configuration-not-found")>=0)return "Email/Password non activé dans la console (Authentication → Sign-in method)";
+  if(c.indexOf("network")>=0)return "réseau indisponible";
+  return (e&&(e.message||e.code))||"erreur inconnue";
 }
+
 var TXT={
   init:"☁ connexion…",sync:"☁ synchronisé",queue:"☁ en attente de publication",
   pending:"☁ mises à jour distantes en attente",empty:"☁ connecté · base cloud vierge",
-  local:"📴 hors-ligne (local)",error:"⚠️ cloud inaccessible"
+  local:"📴 hors-ligne (local)",error:"⚠️ cloud inaccessible",
+  locked:"🔒 connexion Firebase requise"
 };
+
+/* ───────────────── interface cloud (pastille + dialogue + bloc Réglages) ───────────────── */
+var chip=null,dlg=null;
+function ensureUi(){
+  if(chip)return;
+  chip=document.createElement("button");
+  chip.type="button";chip.id="fbChip";chip.className="st-init";chip.textContent="☁ …";
+  document.body.appendChild(chip);
+  chip.addEventListener("click",function(e){e.stopPropagation();openDialog();});
+  dlg=document.createElement("div");
+  dlg.id="fbDlg";dlg.style.display="none";
+  dlg.innerHTML='<div class="fb-back"></div>'+
+    '<div class="fb-card fb-box"><div class="fb-card-h"><span>☁️ Synchronisation Firebase</span>'+
+    '<button type="button" class="fb-x" title="Fermer">✕</button></div><div id="fbDlgB"></div></div>';
+  document.body.appendChild(dlg);
+  qs(".fb-x",dlg).addEventListener("click",closeDialog);
+  qs(".fb-back",dlg).addEventListener("click",closeDialog);
+  document.addEventListener("keydown",function(e){   /* ferme le dialogue avant les autres Échap */
+    if(e.key==="Escape"&&dlg.style.display!=="none"){e.preventDefault();e.stopPropagation();closeDialog();}
+  },true);
+}
+function openDialog(){ensureUi();dlg.style.display="flex";updateDialog();}
+function closeDialog(){if(dlg)dlg.style.display="none";}
+function accountLine(){
+  return FB.user&&FB.user.email?("compte : <b>"+esc(FB.user.email)+"</b>"):"compte : —";
+}
+function formHtml(){
+  return '<div class="fb-form">'+
+    '<input type="email" class="fb-email" placeholder="email (ex. : dr.nakamura@gmail.com)" autocomplete="username">'+
+    '<input type="password" class="fb-pass" placeholder="mot de passe Firebase" autocomplete="current-password">'+
+    '<button type="button" class="adm-btn primary" data-fbsignin="1">🔑 Se connecter à Firebase</button>'+
+    '<div class="fb-err"></div></div>';
+}
+function statusLine(){
+  return '<p class="adm-hint"><b>'+(TXT[HUB.state]||HUB.state)+'</b> — dernière synchro : '+HUB.lastSync+
+    ' · '+accountLine()+' · dernier auteur : '+esc((A.STORE.meta&&A.STORE.meta.updatedBy)||"—")+'</p>';
+}
+function btnsHtml(){
+  return '<div class="adm-set-btns">'+
+    '<button type="button" class="adm-btn primary" data-fbpub="1">⬆ Publier maintenant</button>'+
+    '<button type="button" class="adm-btn" data-fbreload="1">⬇ Recharger l\'état distant</button>'+
+    '<button type="button" class="adm-btn danger" data-fbreset="1">♻ Réinitialiser aussi le cloud</button>'+
+    '<button type="button" class="adm-btn" data-fbsignout="1">🚪 Se déconnecter du cloud</button></div>';
+}
+function lockedHint(){
+  return '<p class="adm-hint">La base est protégée (règles <code>auth != null</code>) : connecte-toi avec le compte créé dans la console Firebase (<b>Authentication → Sign-in method → Email/Password</b> activé, puis <b>Users → Ajouter un utilisateur</b>). '+
+    'La session est conservée d\'un rafraîchissement à l\'autre. Hors connexion, le site continue de fonctionner en local.</p>';
+}
+/* mode d'affichage : le contenu (formulaire/boutons) n'est re-rendu qu'au changement de mode,
+   pour ne jamais effacer une saisie en cours ; seule la ligne de statut se rafraîchit. */
+function fbMode(){
+  if(!FB.ready)return HUB.state==="local"?"local":"init";
+  return HUB.state==="locked"?"locked":"open";
+}
+function updateChip(){
+  if(!chip)return;
+  chip.className="st-"+HUB.state;
+  chip.textContent=({sync:"☁ ✓",locked:"🔒 cloud",queue:"☁ …",pending:"☁ …",empty:"☁ ○",local:"📴 cloud",error:"⚠ cloud",init:"☁ …"})[HUB.state]||"☁";
+  chip.title="Synchronisation Firebase — "+(TXT[HUB.state]||HUB.state)+" (cliquer pour détails / connexion)";
+  var bar=document.getElementById("admBar");             /* remonter au-dessus de la barre admin si active */
+  var on=!!(bar&&bar.classList&&bar.classList.contains("on"));
+  chip.style.bottom=on?(bar.offsetHeight+12)+"px":"14px";
+}
 function updateDot(){
   var dot=document.getElementById("admFbDot");
   if(!dot)return;
-  var st=HUB.state;
-  dot.className="adm-fbdot st-"+st;
-  dot.title=TXT[st]||st+" — dernière synchro : "+HUB.lastSync;
-  dot.textContent=(TXT[st]||st)+(st==="sync"?"":"");
+  dot.className="adm-fbdot st-"+HUB.state;
+  dot.title=(TXT[HUB.state]||HUB.state)+" — dernière synchro : "+HUB.lastSync;
 }
 function updateBlock(){
   var blk=document.getElementById("admFbBlock");
   if(!blk||!A.ADM.on)return;
-  if(!FB.ready&&HUB.state==="local"){
-    blk.innerHTML='<p class="adm-hint"><b>📴 Module cloud non connecté</b> — le site fonctionne en local (hors-ligne). '+
-      'Vérifie ta connexion internet ; si la connexion est bloquée par les règles de la base, voir ci-dessous.</p>'+
-      '<p class="adm-hint">Règles minimum à coller dans la console Firebase (Realtime Database → Règles) :<br>'+
-      '<code>{ "rules": { "site": { ".read": true, ".write": true } } }</code></p>';
-    return;
+  var mode=fbMode();
+  if(blk.getAttribute("data-mode")!==mode){
+    blk.setAttribute("data-mode",mode);
+    var ct="";
+    if(mode==="local")ct='<p class="adm-hint"><b>📴 Module cloud non connecté</b> — le site fonctionne en local (hors-ligne). Vérifie ta connexion internet.</p>';
+    else if(mode==="locked")ct=formHtml()+lockedHint();
+    else if(mode==="init")ct='<p class="adm-hint">chargement de l\'état cloud…</p>';
+    else ct='<p class="adm-hint">Projet <b>'+CFG.projectId+'</b> · base <code>'+CFG.databaseURL+'/'+PATH+'</code> ('+HUB.adapters+'). '+
+      'Chaque modification est publiée automatiquement et apparaît <b>en temps réel</b> sur les autres appareils connectés. '+
+      'Hors-ligne, tout continue de fonctionner : les changements restent dans ce navigateur puis sont publiés au retour de la connexion.</p>'+
+      btnsHtml()+
+      '<p class="adm-hint">🔒 Règles actives : <code>auth != null</code> — seuls les comptes Firebase authentifiés lisent/écrivent la base. '+
+      'Tu peux restreindre à ton seul email : <code>".read": "auth.token.email == \'ton.email@gmail.com\'"</code>.</p>';
+    blk.innerHTML='<div class="fb-box"><div class="fb-st"></div><div class="fb-ct">'+ct+'</div></div>';
   }
-  blk.innerHTML='<p class="adm-hint"><b>'+(TXT[HUB.state]||HUB.state)+'</b> — dernière synchro : '+HUB.lastSync+
-    ' · dernier auteur : '+esc((A.STORE.meta&&A.STORE.meta.updatedBy)||"—")+'</p>'+
-    '<p class="adm-hint">Projet <b>'+CFG.projectId+'</b> · base <code>'+CFG.databaseURL+'/'+PATH+'</code> ('+HUB.adapters+'). '+
-    'Chaque modification est publiée automatiquement et apparaît <b>en temps réel</b> sur les autres appareils connectés. '+
-    'Hors-ligne, tout continue de fonctionner : les changements restent dans ce navigateur puis sont publiés au retour de la connexion.</p>'+
-    '<div class="adm-set-btns">'+
-    '<button type="button" class="adm-btn primary" data-fbpub="1">⬆ Publier maintenant</button>'+
-    '<button type="button" class="adm-btn" data-fbreload="1">⬇ Recharger l\'état distant</button>'+
-    '<button type="button" class="adm-btn danger" data-fbreset="1">♻ Réinitialiser aussi le cloud</button></div>'+
-    '<p class="adm-hint">⚠️ Règles de lecture/écriture publiques sur <code>/site</code> : quiconque connaît l\'URL peut lire ou écrire ces données. '+
-    'Pour restreindre, active Firebase Authentication et passe les règles à <code>auth != null</code>.</p>';
+  var stl=qs(".fb-st",blk);
+  if(stl)stl.innerHTML=statusLine();
 }
+function updateDialog(){
+  if(!dlg||dlg.style.display==="none")return;
+  var mode=fbMode();
+  var key=mode+":"+(A.ADM.on?"adm":"ro");                 /* re-rendu si mode OU statut admin change */
+  if(dlg._key!==key){
+    dlg._key=key;
+    var ct="";
+    if(mode==="local")ct='<p class="adm-hint"><b>📴 Cloud non connecté</b> — le site fonctionne en local (hors-ligne). La synchronisation reprendra avec une connexion internet.</p>';
+    else if(mode==="locked")ct=formHtml()+lockedHint();
+    else if(mode==="init")ct='<p class="adm-hint">chargement…</p>';
+    else ct='<p class="adm-hint">Les modifications sont publiées automatiquement et arrivent en temps réel sur les autres appareils. '+
+      'Projet <b>'+CFG.projectId+'</b> · <code>'+CFG.databaseURL+'/'+PATH+'</code></p>'+
+      (A.ADM.on?btnsHtml():'<p class="adm-hint">Mode consultation : tu reçois les mises à jour. L\'édition demande le mot de passe administrateur du site (🔒 en bas à droite).</p>');
+    var b=qs("#fbDlgB");
+    if(b)b.innerHTML='<div class="fb-st"></div><div class="fb-ct">'+ct+'</div>';
+  }
+  var stl=qs(".fb-st",dlg);
+  if(stl)stl.innerHTML=statusLine();
+}
+function updateAll(){updateDot();updateChip();updateBlock();updateDialog();}
 
 /* ───────────────── publication / adoption ───────────────── */
 function publishNow(){
-  if(!FB.ready){HUB.state="queue";updateDot();updateBlock();return;}
+  if(!FB.ready||!FB.user){HUB.state=FB.ready?"locked":"queue";updateAll();return;}
   var st=stateOf();
   var s=JSON.stringify(st);
   if(s.length>4*1048576)
     A.toast("⚠️ État cloud volumineux ("+(s.length/1048576).toFixed(1)+" Mo) — publication tentée quand même.");
   try{
     FB.adapter.set(PATH,st).then(function(){
-      HUB.state="sync";HUB.lastSync=nowStr();updateDot();updateBlock();
+      HUB.state="sync";HUB.lastSync=nowStr();updateAll();
     },function(e){
-      HUB.state="queue";updateDot();updateBlock();
+      HUB.state="queue";updateAll();
       A.toast("☁️ Publication différée (connexion ou règles) : "+(e&&e.message||""));
     });
-  }catch(e){HUB.state="error";updateDot();}
+  }catch(e){HUB.state="error";updateAll();}
 }
 HUB.dirty=function(){                                    /* appelé par persist() du module admin */
   clearTimeout(HUB.pubT);
   HUB.pubT=setTimeout(function(){
-    if(FB.ready&&FB.connected)publishNow();
-    else if(FB.ready){HUB.state="queue";updateDot();updateBlock();}
+    if(FB.ready&&FB.user&&FB.connected)publishNow();
+    else if(FB.ready&&FB.user&&!FB.connected){HUB.state="queue";updateAll();}
   },800);
 };
 HUB.publishNow=function(){publishNow();};
@@ -26901,13 +27017,31 @@ HUB.resetCloud=function(){
   A.resetFactory();                                      /* reset local → persist → publication auto */
   setTimeout(publishNow,300);
 };
+HUB.signIn=function(email,pass){
+  var p;
+  if(FB.auth)p=FB.authMod.signInWithEmailAndPassword(FB.auth,email,pass);
+  else if(FB.adapter&&FB.adapter.auth)p=FB.adapter.auth.signIn(email,pass);
+  else p=Promise.reject({code:"no-auth",message:"module non chargé"});
+  return p.then(function(u){
+    A.toast("☁️ Connecté"+(u&&u.email?" ("+u.email+")":"")+" — synchronisation cloud active.");
+    if(dlg)closeDialog();
+  },function(e){
+    var msg=authErr(e);
+    Array.prototype.slice.call(document.querySelectorAll(".fb-box .fb-err")).forEach(function(el){el.textContent=msg;});
+    A.toast("🔑 "+msg);
+  });
+};
+HUB.signOut=function(){
+  if(FB.auth)FB.authMod.signOut(FB.auth);
+  else if(FB.adapter&&FB.adapter.auth)FB.adapter.auth.signOut();
+};
 
 function adopt(remote){
   A.rebuild(remote);
   cacheLocal();
   HUB.state="sync";HUB.lastSync=nowStr();HUB.pending=null;
   A.refresh();
-  updateDot();updateBlock();
+  updateAll();
   A.toast("☁️ État distant appliqué ("+((remote&&remote.patches)||[]).length+" correctifs"+
     (remote&&remote.meta&&remote.meta.updatedBy?" · par "+remote.meta.updatedBy:"")+")");
 }
@@ -26915,61 +27049,90 @@ function onRemote(remote){
   HUB.remote=remote||null;
   if(remote==null){
     if(A.STORE.patches&&A.STORE.patches.length)publishNow();   /* base vierge : semer l'état local */
-    else{HUB.state="empty";updateDot();updateBlock();}
+    else{HUB.state="empty";updateAll();}
     return;
   }
-  if(sameState(remote,stateOf())){HUB.state="sync";HUB.lastSync=nowStr();updateDot();updateBlock();return;}
+  if(sameState(remote,stateOf())){HUB.state="sync";HUB.lastSync=nowStr();updateAll();return;}
   var localNewer=((A.STORE.meta&&A.STORE.meta.updatedAt)||0)>((remote.meta&&remote.meta.updatedAt)||0);
   if(localNewer){publishNow();return;}
   if(A.overlaysOpen()){
-    HUB.pending=remote;HUB.state="pending";updateDot();updateBlock();
+    HUB.pending=remote;HUB.state="pending";updateAll();
     A.toast("☁️ Mises à jour distantes reçues — fermez l'éditeur pour les appliquer.");
     return;
   }
   adopt(remote);
 }
 
+/* ───────────────── authentification + souscriptions ───────────────── */
+function unwire(){
+  if(FB.unsub.state){try{FB.unsub.state();}catch(e){}FB.unsub.state=null;}
+  if(FB.unsub.conn){try{FB.unsub.conn();}catch(e){}FB.unsub.conn=null;}
+}
+function wire(){
+  unwire();
+  try{
+    FB.unsub.conn=FB.adapter.onValue(".info/connected",function(v){
+      FB.connected=!!v;
+      if(!v){HUB.state=FB.ready?"queue":"local";updateAll();return;}
+      updateAll();
+      if(HUB.state==="queue")HUB.dirty();                /* republier au retour de la connexion */
+    });
+    FB.unsub.state=FB.adapter.onValue(PATH,function(remote){onRemote(remote);},function(e){
+      var s=String((e&&(e.code||e.message))||"");
+      if(s.indexOf("permission")>=0){
+        HUB.state="locked";updateAll();
+        if(!HUB.lockToast){HUB.lockToast=true;A.toast("🔒 Accès cloud refusé — connexion Firebase requise (☁️ en bas à gauche).");}
+      }else{HUB.state="error";updateAll();}
+    });
+  }catch(e){HUB.state="error";updateAll();}
+}
+function onAuthChanged(user){
+  FB.user=user||null;
+  HUB.lockToast=false;
+  if(user){
+    wire();
+  }else{
+    unwire();
+    HUB.state="locked";
+    updateAll();
+  }
+}
+function wireAuth(){
+  if(FB.auth){FB.authMod.onAuthStateChanged(FB.auth,onAuthChanged);return;}
+  if(FB.adapter&&FB.adapter.auth){FB.adapter.auth.onAuthStateChanged(onAuthChanged);return;}
+  onAuthChanged({email:"adaptateur",uid:"local"});       /* adaptateur de test sans auth */
+}
+
 /* ───────────────── adaptateur (vrai SDK ou mock de test) ───────────────── */
 function bootAdapter(){
   if(window.__FB_ADAPTER){                               /* greffon de test */
     FB.adapter=window.__FB_ADAPTER;FB.ready=true;HUB.adapters="mock";
-    wire();
+    wireAuth();
     return;
   }
-  Promise.all([import(SDK+"firebase-app.js"),import(SDK+"firebase-database.js")])
+  Promise.all([import(SDK+"firebase-app.js"),import(SDK+"firebase-database.js"),import(SDK+"firebase-auth.js")])
     .then(function(mods){
-      var appMod=mods[0],dbMod=mods[1];
+      var appMod=mods[0],dbMod=mods[1],auMod=mods[2];
       var app=appMod.initializeApp(CFG);
       var db=dbMod.getDatabase(app);
+      FB.auth=auMod.getAuth(app);
+      FB.authMod=auMod;
+      try{auMod.setPersistence(FB.auth,auMod.browserLocalPersistence).catch(function(){});}catch(e){}
       FB.adapter={
         onValue:function(path,cb,errcb){
-          dbMod.onValue(dbMod.ref(db,path),cb,errcb||function(e){
-            HUB.state="error";updateDot();updateBlock();
-            A.toast("⚠️ Firebase : accès refusé — vérifie les règles de la base (console).");
-          });
+          return dbMod.onValue(dbMod.ref(db,path),cb,errcb||function(){});
         },
         set:function(path,val){return dbMod.set(dbMod.ref(db,path),val);}
       };
       FB.ready=true;HUB.adapters="firebase js sdk";
-      wire();
+      wireAuth();
     })
     .catch(function(){
-      HUB.state="local";updateDot();updateBlock();
+      HUB.state="local";updateAll();
     });
-}
-function wire(){
-  try{
-    FB.adapter.onValue(".info/connected",function(v){
-      FB.connected=!!v;
-      if(!v){HUB.state=FB.ready?"queue":"local";updateDot();updateBlock();return;}
-      updateDot();
-      if(HUB.state==="queue")HUB.dirty();                /* republier au retour de la connexion */
-    });
-    FB.adapter.onValue(PATH,function(remote){onRemote(remote);});
-  }catch(e){HUB.state="error";updateDot();}
 }
 
-/* ───────────────── pastille dans la barre admin + boutons Réglages ───────────────── */
+/* ───────────────── pastille barre admin + routage des boutons cloud ───────────────── */
 function buildDot(){
   var bar=document.getElementById("admBar");
   if(!bar)return;
@@ -26981,8 +27144,16 @@ function buildDot(){
 document.addEventListener("click",function(e){
   var t=e.target;
   if(!t||!t.closest)return;
-  var el=t.closest("[data-fbpub],[data-fbreload],[data-fbreset]");
+  var el=t.closest("[data-fbsignin],[data-fbsignout],[data-fbpub],[data-fbreload],[data-fbreset]");
   if(!el)return;
+  if(el.hasAttribute("data-fbsignin")){
+    var box=el.closest(".fb-box")||document;
+    var em=qs(".fb-email",box),pa=qs(".fb-pass",box);
+    if(!em||!pa||!em.value.trim()){A.toast("🔑 Renseigne ton email et ton mot de passe Firebase.");return;}
+    HUB.signIn(em.value.trim(),pa.value);
+    return;
+  }
+  if(el.hasAttribute("data-fbsignout")){HUB.signOut();return;}
   if(el.hasAttribute("data-fbpub")){publishNow();A.toast("⬆ Publication cloud demandée.");return;}
   if(el.hasAttribute("data-fbreload")){HUB.reload();return;}
   if(el.hasAttribute("data-fbreset")){
@@ -26992,18 +27163,15 @@ document.addEventListener("click",function(e){
   }
 });
 
-/* ───────────────── boucle d'entretien (adoption différée + bloc Réglages) ───────────────── */
+/* ───────────────── boucle d'entretien (adoption différée + statuts) ───────────────── */
 setInterval(function(){
   if(HUB.pending&&!A.overlaysOpen())adopt(HUB.pending);
-  var blk=document.getElementById("admFbBlock");
-  if(blk&&A.ADM.on&&blk.getAttribute("data-st")!==(HUB.state+"|"+HUB.lastSync)){
-    blk.setAttribute("data-st",HUB.state+"|"+HUB.lastSync);
-    updateBlock();
-  }
+  updateAll();                                           /* statuts + position de la pastille ; saisies préservées (data-mode) */
 },800);
 
 /* ───────────────── démarrage (après le module admin) ───────────────── */
 buildDot();
+ensureUi();
 bootAdapter();
 })();
 
